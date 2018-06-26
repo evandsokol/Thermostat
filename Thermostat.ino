@@ -1,250 +1,280 @@
+/******** Includes ********/
 #include "DHT.h"
 #include <Encoder.h>
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_PCD8544.h>
 
-#define DHTPIN 2     // what digital pin we're connected to
+/******** Initializations and Definitions ********/
 
-// Uncomment whatever type you're using!
-//#define DHTTYPE DHT11   // DHT 11
-#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
-//#define DHTTYPE DHT21   // DHT 21 (AM2301)
+// Debug definition
+#define DEBUG
+
+// Temperature Control Modes
+#define TEMP_OFF 0
+#define TEMP_HEAT 1
+#define TEMP_COOL 2
+
+// Humidity Control Modes
+#define DHUM_OFF 10
+#define DHUM_ON 11
+
+// Fan Control Modes
+#define FAN_OFF 20
+#define FAN_ON 21
+
+// Value for uninitialized sensors
+#define SENSOR_UNINIT -999
+
+// SPI for PCD8544/Nokia5110
+// For hardware SPI, define: Data/Command (DC), Chip Enable (CE), Reset(RST) pins
+// The remaining PCD8544 pins map to the following Arduino pins: (Serial Clock) CLK => SCLK, (Data Input) DIN => MOSI
+// For software SPI, all pins must be defined.
+#define PCD8544_RST_PIN 4
+#define PCD8544_CE_PIN 5
+#define PCD8544_DC_PIN 6
+#define PCD8544_DIN_PIN 7
+#define PCD8544_CLK_PIN 8
 
 // Change these two numbers to the pins connected to your encoder.
 //   Best Performance: both pins have interrupt capability
 //   Good Performance: only the first pin has interrupt capability
 //   Low Performance:  neither pin has interrupt capability
-Encoder myEnc(5, 6);
+#define ENCODER_DT_PIN 2
+#define ENCODER_CLK_PIN 3
 
-// Connect pin 1 (on the left) of the sensor to +5V
-// NOTE: If using a board with 3.3V logic like an Arduino Due connect pin 1
-// to 3.3V instead of 5V!
-// Connect pin 2 of the sensor to whatever your DHTPIN is
-// Connect pin 4 (on the right) of the sensor to GROUND
-// Connect a 10K resistor from pin 2 (data) to pin 1 (power) of the sensor
+// Pin for DHT sensor data communication
+#define DHT_PIN 9     
+
+// Define type of DHT being used: DHT11//DHT21//DHT22
+#define DHT_TYPE DHT11
+
+Encoder myEnc(ENCODER_DT_PIN, ENCODER_CLK_PIN);
 
 // Initialize DHT sensor.
-// Note that older versions of this library took an optional third parameter to
-// tweak the timings for faster processors.  This parameter is no longer needed
-// as the current DHT reading algorithm adjusts itself to work on faster procs.
-DHT dht(DHTPIN, DHTTYPE);
+DHT dht(DHT_PIN, DHT_TYPE);
 
-// Software SPI (slower updates, more flexible pin options):
-// pin 7 - Serial clock out (SCLK)
-// pin 6 - Serial data out (DIN)
-// pin 5 - Data/Command select (D/C)
-// pin 4 - LCD chip select (CS)
-// pin 3 - LCD reset (RST)
-Adafruit_PCD8544 display = Adafruit_PCD8544(7, 6, 5, 4, 3);
+// Software SPI initialization (slower updates, more flexible pin options):
+Adafruit_PCD8544 display = Adafruit_PCD8544(PCD8544_CLK_PIN, PCD8544_DIN_PIN, PCD8544_DC_PIN, PCD8544_CE_PIN, PCD8544_RST_PIN);
 
-// Hardware SPI (faster, but must use certain hardware pins):
-// SCK is LCD serial clock (SCLK) - this is pin 13 on Arduino Uno
-// MOSI is LCD DIN - this is pin 11 on an Arduino Uno
-// pin 5 - Data/Command select (D/C)
-// pin 4 - LCD chip select (CS)
-// pin 3 - LCD reset (RST)
-// Adafruit_PCD8544 display = Adafruit_PCD8544(5, 4, 3);
-// Note with hardware SPI MISO and SS pins aren't used but will still be read
+// Hardware SPI initialization(faster, but must use certain hardware pins):
+// Adafruit_PCD8544 display = Adafruit_PCD8544(PCD8544_DC_PIN, PCD8544_CE_PIN, PCD8544_RST_PIN);
+// Note with hardware SPI MISO and SCLK pins aren't used but will still be read
 // and written to during SPI transfer.  Be careful sharing these pins!
 
-#define NUMFLAKES 10
-#define XPOS 0
-#define YPOS 1
-#define DELTAY 2
+//Screen Contrast (0-100)
+#define CONTRAST 20
 
+// Menu Options
+char back = "Back";
+char menu_opt1 = "Temp Mode";
+char menu_opt2 = "Set Temp";
+char menu_opt3 = "Dehumidifer Mode";
+char menu_opt4 = "Set Humidity";
+char menu_opt5 = "Fan Mode";
 
-#define LOGO16_GLCD_HEIGHT 16
-#define LOGO16_GLCD_WIDTH  16
+* char settings menu[6]
 
-static const unsigned char PROGMEM logo16_glcd_bmp[] =
-{ B00000000, B11000000,
-  B00000001, B11000000,
-  B00000001, B11000000,
-  B00000011, B11100000,
-  B11110011, B11100000,
-  B11111110, B11111000,
-  B01111110, B11111111,
-  B00110011, B10011111,
-  B00011111, B11111100,
-  B00001101, B01110000,
-  B00011011, B10100000,
-  B00111111, B11100000,
-  B00111111, B11110000,
-  B01111100, B11110000,
-  B01110000, B01110000,
-  B00000000, B00110000 };
-
-
+/******** Setup ********/
 void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(9600);
-  Serial.println("DHTxx test!");
-  Serial.println("Basic Encoder Test:");
 
+  #ifdef DEBUG
+    Serial.begin(9600);
+    Serial.println("Thermostat Test");
+  #endif
+
+  // DHT init
   dht.begin();
 
+  // display init
   display.begin();
-  // init done
-
-  // you can change the contrast around to adapt the display
-  // for the best viewing!
-  display.setContrast(50);
-
-  display.display(); // show splashscreen
-  delay(2000);
-  display.clearDisplay();   // clears the screen and buffer
-
-  // draw a single pixel
-  display.drawPixel(10, 10, BLACK);
+  display.setContrast(CONTRAST);
+  display.clearDisplay();
+  display.println("  Loading... ");
   display.display();
-  delay(2000);
   display.clearDisplay();
 
-  // draw many lines
-  testdrawline();
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // draw rectangles
-  testdrawrect();
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // draw multiple rectangles
-  testfillrect();
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // draw mulitple circles
-  testdrawcircle();
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // draw a circle, 10 pixel radius
-  display.fillCircle(display.width()/2, display.height()/2, 10, BLACK);
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  testdrawroundrect();
-  delay(2000);
-  display.clearDisplay();
-
-  testfillroundrect();
-  delay(2000);
-  display.clearDisplay();
-
-  testdrawtriangle();
-  delay(2000);
-  display.clearDisplay();
-   
-  testfilltriangle();
-  delay(2000);
-  display.clearDisplay();
-
-  // draw the first ~12 characters in the font
-  testdrawchar();
-  display.display();
-  delay(2000);
-  display.clearDisplay();
-
-  // text display tests
-  display.setTextSize(1);
-  display.setTextColor(BLACK);
-  display.setCursor(0,0);
-  display.println("Hello, world!");
-  display.setTextColor(WHITE, BLACK); // 'inverted' text
-  display.println(3.141592);
-  display.setTextSize(2);
-  display.setTextColor(BLACK);
-  display.print("0x"); display.println(0xDEADBEEF, HEX);
-  display.display();
-  delay(2000);
-
-  // rotation example
-  display.clearDisplay();
-  display.setRotation(1);  // rotate 90 degrees counter clockwise, can also use values of 2 and 3 to go further.
-  display.setTextSize(1);
-  display.setTextColor(BLACK);
-  display.setCursor(0,0);
-  display.println("Rotation");
-  display.setTextSize(2);
-  display.println("Example!");
-  display.display();
-  delay(2000);
-
-  // revert back to no rotation
-  display.setRotation(0);
-
-  // miniature bitmap display
-  display.clearDisplay();
-  display.drawBitmap(30, 16,  logo16_glcd_bmp, 16, 16, 1);
-  display.display();
-
-  // invert the display
-  display.invertDisplay(true);
-  delay(1000); 
-  display.invertDisplay(false);
-  delay(1000); 
-
-  // draw a bitmap icon and 'animate' movement
-  testdrawbitmap(logo16_glcd_bmp, LOGO16_GLCD_WIDTH, LOGO16_GLCD_HEIGHT);
+  // display.clearDisplay();   // clears the screen and buffer
+  // display.setTextSize(1);
+  // display.setTextColor(BLACK);
+  // display.setCursor(0,0);
+  // display.println("Hello, world!");
+  // display.setTextColor(WHITE, BLACK); // 'inverted' text
+  // display.print("0x"); 
+  // display.println(0xDEADBEEF, HEX);
+  // display.display();
+  // display.setRotation(1);  // rotate 90 degrees counter clockwise, can also use values of 2 and 3 to go further.
+  // display.invertDisplay(true);
 
 }
 
+/******** Declaration of Global Variables ********/
+// Initializaiton for rotary encoder position
 long oldPosition  = -999;
 
+// Clear sensor error flags
+bool DHT_Err = false;
+
+// Clear element error flags
+// N/A currently
+
+// Initialize thermostat modes
+int TempMode = TEMP_OFF;
+int DhumMode = DHUM_OFF;
+int FanMode = FAN_OFF;
+
+// Initialize sensor values and set points
+float InsideTemp = SENSOR_UNINIT;
+float SetTemp = SENSOR_UNINIT;
+float InsideHum = SENSOR_UNINIT;
+float SetHum = SENSOR_UNINIT;
+
+/******** Main Loop ********/
 void loop() {
   // put your main code here, to run repeatedly:
   // Wait a few seconds between measurements.
   delay(2000);
 
-  // Reading temperature or humidity takes about 250 milliseconds!
-  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  float h = dht.readHumidity();
-  // Read temperature as Celsius (the default)
-  float t = dht.readTemperature();
-  // Read temperature as Fahrenheit (isFahrenheit = true)
-  float f = dht.readTemperature(true);
-
-  // Check if any reads failed and exit early (to try again).
-  if (isnan(h) || isnan(t) || isnan(f)) {
-    Serial.println("Failed to read from DHT sensor!");
-    return;
-  }
-
-  // Compute heat index in Fahrenheit (the default)
-  float hif = dht.computeHeatIndex(f, h);
-  // Compute heat index in Celsius (isFahreheit = false)
-  float hic = dht.computeHeatIndex(t, h, false);
-
-  Serial.print("Humidity: ");
-  Serial.print(h);
-  Serial.print(" %\t");
-  Serial.print("Temperature: ");
-  Serial.print(t);
-  Serial.print(" *C ");
-  Serial.print(f);
-  Serial.print(" *F\t");
-  Serial.print("Heat index: ");
-  Serial.print(hic);
-  Serial.print(" *C ");
-  Serial.print(hif);
-  Serial.println(" *F");
+  ElementUpdate();
+  DisplayStatus();
 
   long newPosition = myEnc.read();
   if (newPosition != oldPosition) {
     oldPosition = newPosition;
     Serial.println(newPosition);
   }
-
-  
-
-  
+  else {
+    Serial.println(newPosition);
+  }
 
 }
+
+
+/******** Functions ********/
+void ElementUpdate(){
+  // Reading temperature or humidity takes about 250 milliseconds!
+  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+  InsideHum = dht.readHumidity();
+  // Read temperature as Fahrenheit (isFahrenheit = true)
+  InsideTemp = dht.readTemperature(true);
+
+  // Check if any reads failed and exit early or continue to process element update.
+  if (isnan(InsideHum) || isnan(InsideTemp)) {
+    Serial.println("Failed to read from DHT sensor!");
+    DHT_Err = true;
+    ElementsOff();
+    return;
+  }
+  else {
+    Serial.print("Humidity: ");
+    Serial.print(InsideHum);
+    Serial.print(" %\t");
+    Serial.print("Temperature: ");;
+    Serial.print(InsideTemp);
+    Serial.println(" *F\t");
+  }
+
+  
+}
+
+void ElementsOff(){
+  Serial.print("Turning Elements Off");
+}
+
+void DisplayStatus(){
+  // Temperature
+  display.print("Temp:  ");
+  if (InsideTemp<100){
+    display.print(" ");
+  }
+  display.print(int(InsideTemp));
+  display.println("F ");
+
+  if (TempMode == TEMP_OFF){
+    display.println("  OFF ");
+  }
+  else{
+    switch (TempMode) {
+      case TEMP_HEAT :
+        display.print(" HEAT  ");
+        break;
+      case TEMP_COOL :
+        display.print(" COOL  ");
+        break;
+      default :
+        display.print(" ERR  ");
+    }
+      
+    if (InsideTemp<100){
+      display.print(" ");
+    }
+    display.print(int(SetTemp));
+    display.println("F");
+    if (SetTemp<100){
+      display.print(" ");
+    }
+    display.print(int(SetTemp));
+    display.println("F");
+  }
+  
+  
+
+  // Humidity
+  display.print("Hmdty: ");
+  if (InsideHum<100){
+    display.print(" ");
+  }
+  display.print(int(InsideHum)); 
+  display.println("%");
+  if (DhumMode == DHUM_OFF) {
+    display.println("  OFF");
+  }
+  else {
+    display.print("   ON  ");
+    display.print(SetHum);
+    display.println("%");
+  }
+  
+  // Fan
+  display.print("Fan:    ");
+  if (FanMode == FAN_OFF) {
+    display.println("OFF");
+  }
+  else {
+    display.println(" ON");
+  }
+  
+  display.display();
+  display.clearDisplay();
+}
+
+void DisplaySettings(int selectedRow, int topRow){
+  for (int row=topRow; row++; row < topRow+6){
+    switch(row){
+      case 1: 
+        printSettingItem(row, selectedRow, topRow, "Back");
+      case 2:
+        printSettingItem(row, selectedRow, topRow, "Temp Mode");
+      case 3:
+        printSettingItem(row, selectedRow, topRow, "Set Temp");
+      case 4:
+        printSettingItem(row, selectedRow, topRow, "Dehumidifer Mode");
+      case 5:
+        printSettingItem(row, selectedRow, topRow, "Set Humidity");
+      case 6:
+        printSettingItem(row, selectedRow, topRow, "Fan Mode");
+    }
+  }
+}
+
+void printSettingItem(int row, int selectedRow, int topRow, char charString){
+  if (row == selectedRow) {
+    display.setTextColor(WHITE, BLACK);
+    display.println(charString);
+    display.setTextColor(BLACK);
+  }
+  if (row >= topRow + 6){
+    break;
+  }
+}
+
