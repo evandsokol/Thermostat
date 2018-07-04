@@ -1,0 +1,12 @@
+- Thermostat/Controller -
+-- Currently planned sensors:
+  - Water Level
+  - Temp/Humidity
+  - Water Level
+  - Air Quality
+  
+-- Currently planned control elements:
+  - Heater
+  - Fan
+  - Lights
+  - AC
